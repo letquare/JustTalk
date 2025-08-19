@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Just Talk</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 680px; margin: 32px auto; }
+    input { padding: 6px 10px; margin: 4px 0; }
+    button { padding: 8px 12px; margin-right: 8px; }
+    .row { margin: 10px 0; }
+    .status { margin-top: 8px; opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <h1>Just Talk</h1>
+
+  <div class="row">
+    <label>Твой ID: <input id="myId" value="user_1"></label>
+  </div>
+  <div class="row">
+    <label>ID друга: <input id="friendId" value="user_2"></label>
+  </div>
+
+  <div class="row">
+    <button id="callBtn">Позвонить</button>
+    <button id="readyBtn">Готов принимать</button>
+  </div>
+
+  <div class="status" id="status">Статус: —</div>
+
+  <h3>Аудио</h3>
+  <audio id="remoteAudio" autoplay></audio>
+
+  <script>
+    let pc, ws, friendId, myId;
+    const statusEl = document.getElementById("status");
+
+    function logStatus(s) { statusEl.textContent = "Статус: " + s; console.log(s); }
+
+    // Всегда подключаемся к WS на том же хосте/порту, что и страница
+    function wsUrlFor(userId) {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      return `${proto}://${location.host}/ws/${encodeURIComponent(userId)}`;
+    }
+
+    async function setupPeer() {
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" } // для старта достаточно
+        ]
+      });
+
+      // Локальный микрофон
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      for (const track of stream.getTracks()) pc.addTrack(track, stream);
+
+      // Приходящий звук
+      pc.ontrack = (e) => {
+        document.getElementById("remoteAudio").srcObject = e.streams[0];
+      };
+
+      // Отправка ICE кандидатов собеседнику
+      pc.onicecandidate = (e) => {
+        if (e.candidate && ws && friendId) {
+          ws.send(JSON.stringify({ to: friendId, type: "candidate", data: e.candidate }));
+        }
+      };
+    }
+
+    function bindWsHandlers() {
+      ws.onopen = () => logStatus("WS подключён");
+      ws.onclose = () => logStatus("WS закрыт");
+      ws.onerror = (e) => logStatus("WS ошибка");
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+        // Автоматически подхватываем друга из поля "from"
+        if (!friendId && msg.from) friendId = msg.from;
+
+        if (msg.type === "offer") {
+          logStatus("Получили offer");
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ to: msg.from, type: "answer", data: answer }));
+          logStatus("Отправили answer");
+        } else if (msg.type === "answer") {
+          logStatus("Получили answer");
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+        } else if (msg.type === "candidate") {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.data));
+          } catch (e) {
+            console.error("addIceCandidate error", e);
+          }
+        }
+      };
+    }
+
+    document.getElementById("callBtn").onclick = async () => {
+      myId = document.getElementById("myId").value.trim();
+      friendId = document.getElementById("friendId").value.trim();
+
+      if (!myId || !friendId) return alert("Укажи оба ID");
+
+      ws = new WebSocket(wsUrlFor(myId));
+      bindWsHandlers();
+
+      await setupPeer();
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      ws.addEventListener("open", () => {
+        ws.send(JSON.stringify({ to: friendId, type: "offer", data: offer }));
+        logStatus("Отправили offer");
+      });
+    };
+
+    // Нажимает тот, кто ждёт звонка
+    document.getElementById("readyBtn").onclick = async () => {
+      myId = document.getElementById("myId").value.trim();
+      if (!myId) return alert("Укажи свой ID");
+
+      ws = new WebSocket(wsUrlFor(myId));
+      bindWsHandlers();
+      await setupPeer();
+
+      logStatus("Готов принимать входящий звонок…");
+    };
+  </script>
+</body>
+</html>
