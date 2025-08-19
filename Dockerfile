@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     python3-dev
 
-COPY poetry.lock pyproject.toml /app
+COPY poetry.lock pyproject.toml /app/
 
 RUN pip install poetry
 RUN poetry install --no-root
