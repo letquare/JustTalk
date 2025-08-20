@@ -10,8 +10,8 @@ services:
       "poetry", "run", "uvicorn", "main:app",
       "--host=0.0.0.0",
       "--port=443",
-      "--ssl-keyfile=/root/certs/selfsigned.key",
-      "--ssl-certfile=/root/certs/selfsigned.crt"
+      "--ssl-keyfile=/certs/selfsigned.key",
+      "--ssl-certfile=/certs/selfsigned.crt"
     ]
     restart: unless-stopped
     ports:
