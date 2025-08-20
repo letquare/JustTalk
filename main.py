@@ -44,4 +44,4 @@ async def ws_endpoint(ws: WebSocket, user_id: str):
         connections.pop(user_id, None)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=433)
+    uvicorn.run("main:app", host="0.0.0.0", port=443)
